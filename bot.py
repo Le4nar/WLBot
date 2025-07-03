@@ -46,16 +46,26 @@ def create_config_file():
     """Створити файл конфігурації, якщо його немає"""
     print("Файл конфігурації не знайдено. Створюємо новий файл та запитуємо необхідні дані.")
     
+    # Перевірка на наявність правильних значень для кожного ключа
     steam_api_key = input("Введіть ваш Steam API Key: ")
     discord_api_key = input("Введіть ваш Discord API Token: ")
     allowed_channel_id = input("Введіть ID вашого Discord каналу: ")
 
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        f.write(f"STEAM_API_KEY={steam_api_key}\n")
-        f.write(f"DISCORD_API_KEY={discord_api_key}\n")
-        f.write(f"ALLOWED_CHANNEL_ID={allowed_channel_id}\n")
+    # Перевіряємо, чи введені всі дані
+    if not steam_api_key or not discord_api_key or not allowed_channel_id:
+        print("Всі поля повинні бути заповнені! Завершення.")
+        exit()  # Зупиняємо програму, якщо є пропущені поля
 
-    print("Файл конфігурації створено. Запустіть програму знову для її роботи.")
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            f.write(f"STEAM_API_KEY={steam_api_key}\n")
+            f.write(f"DISCORD_API_KEY={discord_api_key}\n")
+            f.write(f"ALLOWED_CHANNEL_ID={allowed_channel_id}\n")
+
+        print(f"Файл конфігурації створено успішно: {CONFIG_FILE}. Тепер запустіть програму знову.")
+    except Exception as e:
+        print(f"Сталася помилка при створенні конфігураційного файлу: {e}")
+        exit()
 
 def get_steam_nickname(steam_id, steam_api_key):
     """Отримати нікнейм Steam за SteamID64"""
