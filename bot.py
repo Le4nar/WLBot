@@ -22,13 +22,44 @@ bot = commands.Bot(
 )
 
 # Конфігураційні константи
-DATA_FILE = "data.cfg"
-STEAM_API_KEY = "steamkey"
-ALLOWED_CHANNEL_ID = 134  # ID вашого каналу
+CONFIG_FILE = "config.cfg"
 
-def get_steam_nickname(steam_id):
+def load_config():
+    """Завантажити конфігурацію з файлу config.cfg"""
+    if not os.path.exists(CONFIG_FILE):
+        create_config_file()
+
+    config = {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        for line in f.readlines():
+            line = line.strip()
+            if line.startswith("STEAM_API_KEY="):
+                config["STEAM_API_KEY"] = line.split("=")[1]
+            elif line.startswith("DISCORD_API_KEY="):
+                config["DISCORD_API_KEY"] = line.split("=")[1]
+            elif line.startswith("ALLOWED_CHANNEL_ID="):
+                config["ALLOWED_CHANNEL_ID"] = int(line.split("=")[1])
+
+    return config
+
+def create_config_file():
+    """Створити файл конфігурації, якщо його немає"""
+    print("Файл конфігурації не знайдено. Створюємо новий файл та запитуємо необхідні дані.")
+    
+    steam_api_key = input("Введіть ваш Steam API Key: ")
+    discord_api_key = input("Введіть ваш Discord API Token: ")
+    allowed_channel_id = input("Введіть ID вашого Discord каналу: ")
+
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        f.write(f"STEAM_API_KEY={steam_api_key}\n")
+        f.write(f"DISCORD_API_KEY={discord_api_key}\n")
+        f.write(f"ALLOWED_CHANNEL_ID={allowed_channel_id}\n")
+
+    print("Файл конфігурації створено. Запустіть програму знову для її роботи.")
+
+def get_steam_nickname(steam_id, steam_api_key):
     """Отримати нікнейм Steam за SteamID64"""
-    url = f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={STEAM_API_KEY}&steamids={steam_id}"
+    url = f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={steam_api_key}&steamids={steam_id}"
     try:
         response = requests.get(url)
         data = response.json()
@@ -39,8 +70,8 @@ def get_steam_nickname(steam_id):
 def load_data():
     """Завантажити дані з data.cfg"""
     data = {"groups": [], "admins": []}
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+    if os.path.exists("data.cfg"):
+        with open("data.cfg", "r", encoding="utf-8") as f:
             for line in f.readlines():
                 line = line.strip()
                 if line.startswith("Group="):
@@ -61,7 +92,7 @@ def load_data():
 
 def save_data(data):
     """Зберегти дані у data.cfg"""
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+    with open("data.cfg", "w", encoding="utf-8") as f:
         for group in data["groups"]:
             f.write(f"{group}\n")
         for admin in data["admins"]:
@@ -76,8 +107,13 @@ def webhook():
         steam_id = str(content.get("steam_id"))
         discord_user_id = str(content.get("user_id"))
 
+        config = load_config()  # Завантажуємо конфігурацію
+        steam_api_key = config["STEAM_API_KEY"]
+        discord_api_key = config["DISCORD_API_KEY"]
+        allowed_channel_id = config["ALLOWED_CHANNEL_ID"]
+
         data = load_data()
-        nickname = get_steam_nickname(steam_id)
+        nickname = get_steam_nickname(steam_id, steam_api_key)
         expires = (datetime.now() + timedelta(days=3)).isoformat()
         
         new_admin = {
@@ -92,7 +128,7 @@ def webhook():
         # Відправка повідомлення у вказаний канал
         message = f"Admin={steam_id}:Seeder // {nickname} // {expires}"
         asyncio.run_coroutine_threadsafe(
-            send_to_channel(message),
+            send_to_channel(message, discord_api_key, allowed_channel_id),
             bot.loop
         )
 
@@ -100,21 +136,21 @@ def webhook():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
-async def send_to_channel(message):
+async def send_to_channel(message, discord_api_key, allowed_channel_id):
     """Надсилання повідомлення у дозволений канал"""
-    channel = bot.get_channel(ALLOWED_CHANNEL_ID)
+    channel = bot.get_channel(allowed_channel_id)
     if channel:
         await channel.send(message)
 
 # Блокування всіх повідомлень/команд поза дозволеним каналом
 @bot.check
 async def channel_check(ctx):
-    return ctx.channel.id == ALLOWED_CHANNEL_ID
+    return ctx.channel.id == allowed_channel_id
 
 @bot.event
 async def on_message(message):
     """Ігнорувати всі повідомлення поза дозволеним каналом"""
-    if message.channel.id != ALLOWED_CHANNEL_ID:
+    if message.channel.id != allowed_channel_id:
         return
     await bot.process_commands(message)
 
@@ -131,17 +167,6 @@ async def check_expired():
         save_data(data)
     except Exception as e:
         print(f"Помилка очистки: {e}")
-        
-# Додайте цей маршрут після інших Flask-ендпоінтів
-@app.route("/config")
-def get_config():
-    """Повертає вміст data.cfg"""
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-        return content, 200, {"Content-Type": "text/plain"}
-    except FileNotFoundError:
-        return "Файл не знайдено", 404
 
 # Події бота
 @bot.event
@@ -161,4 +186,5 @@ threading.Thread(
 
 # Запуск бота
 if __name__ == "__main__":
-    bot.run("")
+    config = load_config()  # Завантажуємо конфігурацію
+    bot.run(config["DISCORD_API_KEY"])
